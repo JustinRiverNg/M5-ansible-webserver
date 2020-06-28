@@ -1,0 +1,74 @@
+---
+- hosts: localhost
+  gather_facts: no
+  vars:
+    ami_id: "ami-026dea5602e368e96"
+  module_defaults:
+    group/aws:
+      region: "us-east-2"
+  tasks:
+    - name: Create launch template
+      ec2_launch_template:
+        name: "M5-ig-lt"
+        image_id: "{{ ami_id }}"
+        key_name: auburncc
+        instance_type: t3.nano
+        tags:
+          Name: "M5-ig-asg-server"
+        network_interfaces:
+          - device_index: 0
+            associate_public_ip_address: yes
+            groups:
+              - "{{ nginx_servers_sg.group_id }}"
+              - "{{ dev_sg.group_id }}"
+              - "{{ ig_postgres_sg.group_id }}"
+              - "{{ ig_postgres_tag_sg.group_id }}"
+        iam_instance_profile: image-gallery-server-role
+        user_data: "{{ lookup('file', './startup scripts/Startup Script - ig-s3.sh') | b64encode }}"
+        state: present
+      register: ig_lt
+    - name: Create target group
+      elb_target_group:
+        name: M5-ig-tg
+        protocol: tcp
+        port: 80
+        vpc_id: "{{ vpc.vpc.id }}"
+        stickiness_enabled: no
+        stickiness_type: source_ip
+        state: present
+      register: ig_tg
+    - name: debug
+      debug:
+        var: ig_tg
+    - name: Create elastic network load balancer
+      elb_network_lb:
+        name: M5-ig-nlb
+        subnets: "{{ public_subnet.subnet.id }}"
+        listeners:
+          - Protocol: TCP
+            Port: 80
+            DefaultActions:
+              - Type: forward
+                TargetGroupName: "{{ ig_tg.target_group_name }}"
+          - Protocol: TLS
+            Certificates:
+              - CertificateArn: "arn:aws:acm:us-east-2:973108234519:certificate/1855cbd6-0230-4e79-9a14-28dd863792df"
+            Port: 443
+            DefaultActions:
+              - Type: forward
+                TargetGroupName: "{{ ig_tg.target_group_name }}"
+        state: present
+    - name: Create auto-scaling group
+      ec2_asg:
+        name: M5-ig-asg
+        availability_zones: "us-east-2a"
+        launch_template:
+          launch_template_name: 'M5-ig-lt'
+        min_size: 1
+        max_size: 4
+        desired_capacity: 1
+        vpc_zone_identifier: "{{ public_subnet.subnet.id }}"
+        state: present
+
+
+

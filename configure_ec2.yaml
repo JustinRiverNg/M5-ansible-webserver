@@ -1,0 +1,27 @@
+---
+- hosts: tag_Name_M5dev
+  user: ec2-user
+  become: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python
+  tasks:
+    - name: Install python
+      package: 
+        name: python3
+        state: present
+    - name: Install python development
+      package: 
+        name: python3-devel
+        state: present
+    - name: Install gcc
+      package: 
+        name: gcc
+        state: present
+    - name: Install postgresql
+      package: 
+        name: postgresql
+        state: present
+    - name: Install postgresql development
+      package: 
+        name: postgresql-devel
+        state: present
